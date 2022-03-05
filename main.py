@@ -2,30 +2,33 @@
 
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
+import statistics
 
 from PIL import Image
 import numpy as np
 from statistics import mode
+import cv2
+from midiutil.MidiFile import MIDIFile
 
-note_names = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"]
+note_names = []
 
 colors_all = {}
-colors_keys = {"white": (255, 255, 255),
-               "black": (0, 0, 0)}
-colors_all.update(colors_keys)
-
-colors_notes = {"black": (0, 0, 0),
-                "blue": (2, 17, 255),
-                "green": (73, 246, 42),
-                "purple": (138, 69, 255),
-                "red": (252, 72, 23),
-                "yellow": (251, 246, 56),
-                }
-colors_all.update(colors_notes)
+colors_keys = {}
+colors_notes = {}
+keys = {}
 
 
-def init(key_image, key_image_row, starting_key):
-    pass
+def init(key_image, key_image_row, starting_key, note_colors):
+    global keys, colors_notes, colors_keys, colors_all, note_names
+
+    note_names = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"]
+    colors_notes = note_colors
+    colors_all.update(colors_notes)
+    colors_keys = colors_keys = {"white": (255, 255, 255),
+                                 "black": (0, 0, 0)}
+    colors_all.update(colors_keys)
+
+    keys = detect_keys(_get_pixel_row(key_image, key_image_row), starting_key)
 
 
 def _to_image(row, name="new", show=False):
@@ -46,7 +49,7 @@ def _color_distance(col1, col2):
     return np.sqrt((col1[0] - col2[0]) ** 2 + (col1[1] - col2[1]) ** 2 + (col1[2] - col2[2]) ** 2)
 
 
-def get_pixel_row(image, row):
+def _get_pixel_row(image, row):
     pix_row = []
     for i in range(image.size[0]):
         pix_row.append(image.getpixel((i, row)))
@@ -113,14 +116,13 @@ def _remove_spaces(kb):
     for key in kb:
         lengths.append(key[1] - key[0])
     min_black_key_length = np.histogram(np.array(lengths), 2)[0][0]
-    print(min_black_key_length)
     for key in kb:
         if key[1] - key[0] < min_black_key_length:
             kb.remove(key)
     return kb
 
 
-def detect_notes(keys, row, detected_from_keys=False):
+def detect_notes(row, detected_from_keys=False):
     colors = colors_all if detected_from_keys else colors_notes
     discreet_colors = discretize_colours(colors, row)
     played_notes = {}
@@ -129,7 +131,10 @@ def detect_notes(keys, row, detected_from_keys=False):
     played_notes.pop("black")
     for key in keys.keys():
         line = discreet_colors[keys[key][0]:keys[key][1]]
-        line_color = mode(line)
+        try:
+            line_color = mode(line)
+        except statistics.StatisticsError:
+            continue
         if line_color not in colors_keys.keys():
             played_notes[line_color].append(key)
     return played_notes
@@ -145,18 +150,97 @@ def discretize_colours(colors, row):
     return colored_pixels
 
 
+def write_to_midi(channels):
+    mf = MIDIFile(len(channels), eventtime_is_ticks=True)
+
+    time = 0  # start at the beginning
+    track = 0
+    for key in channels.keys():
+        mf.addTrackName(track, time, key)
+        for frame in channels[key]:
+            if not frame:
+                time += 1
+            else:
+                for note in frame:
+                    mf.addNote(track, 0, _sci_note_to_midi_pitch(note), time, 1, 100)  # fixme duration
+
+        track += 1
+        time = 0
+
+    with open("output.mid", 'wb') as outf:
+        mf.writeFile(outf)
+
+
+def _sci_note_to_midi_pitch(note):
+    tone = note[0:-1]
+    octave = note[-1]
+    pitch = 12 + note_names.index(tone) + int(octave) * 12
+    return pitch
+
+
+
 def main():
     starting_key = ("a", 0)
+    note_colors = {"black": (0, 0, 0),
+                   "blue": (2, 17, 255),
+                   "green": (73, 246, 42),
+                   # "purple": (138, 69, 255),
+                   # "red": (252, 72, 23),
+                   # "yellow": (251, 246, 56),
+                   }
+    start_time = 2.5
+    stop_time = 90
 
     im_notes = Image.open("notes_3.PNG")
     im_keys = Image.open("keys.PNG")
 
-    im_notes_pix = get_pixel_row(im_notes, 1)
-    im_keys_pix = get_pixel_row(im_keys, 1)
+    # init(im_keys, 1, starting_key, note_colors)
 
-    keys = detect_keys(im_keys_pix, starting_key)
-    played_notes = detect_notes(keys, im_notes_pix, True)
-    print(played_notes)
+    played_notes = []
+
+    video = cv2.VideoCapture('vid.mp4')
+    fps = video.get(cv2.CAP_PROP_FPS)
+    currentframe = 0
+    while True:
+        ret, frame = video.read()
+
+        if not ret:
+            break
+
+        currentframe += 1
+        if currentframe / fps < start_time:
+            continue
+        elif stop_time is not None and currentframe / fps > stop_time:
+            break
+
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        image = Image.fromarray(frame)
+        im_notes_pix = _get_pixel_row(image, 615)
+        if currentframe == start_time * fps:
+            init(image, 615, starting_key, note_colors)
+
+        played_notes.append(detect_notes(im_notes_pix, True))
+
+        if currentframe % fps == 0:
+            print(f"Processed {int(currentframe / fps)} seconds")
+
+    video.release()
+    cv2.destroyAllWindows()
+
+    channels = {}
+    for col in colors_notes.keys():
+        if col == "black":
+            continue
+        channels[col] = []
+        for row in played_notes:
+            channels[col].append(row[col])
+
+    for col in colors_notes:
+        if col == "black":
+            continue
+        print(channels[col])
+
+    write_to_midi(channels)
 
 
 if __name__ == '__main__':
