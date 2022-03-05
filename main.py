@@ -150,25 +150,48 @@ def discretize_colours(colors, row):
     return colored_pixels
 
 
-def write_to_midi(channels):
-    mf = MIDIFile(len(channels), eventtime_is_ticks=True)
+def write_to_midi(channels, fpq):
+    mf = MIDIFile(len(channels))
 
-    time = 0  # start at the beginning
     track = 0
     for key in channels.keys():
-        mf.addTrackName(track, time, key)
-        for frame in channels[key]:
-            if not frame:
-                time += 1
-            else:
-                for note in frame:
-                    mf.addNote(track, 0, _sci_note_to_midi_pitch(note), time, 1, 100)  # fixme duration
+        mf.addTrackName(track, 0, key)
+        for note in keys.keys():
+            note_strokes = _get_note_strokes(note, channels[key])
+            for stroke in note_strokes:
+                start, dur = _frames_to_qnotes(stroke[0], fpq), _frames_to_qnotes(stroke[1], fpq)
+                if dur > 0:
+                    mf.addNote(track, 0, _sci_note_to_midi_pitch(note), start, dur, 100)  # fixme duration
 
         track += 1
-        time = 0
 
     with open("output.mid", 'wb') as outf:
         mf.writeFile(outf)
+
+
+def _get_note_strokes(note, channel):
+    strokes = []  # (start, dur)
+    flag = 0
+    start = 0
+    for idx, played_notes in enumerate(channel):
+        if flag == 0:
+            if note in played_notes:  # start
+                start = idx
+                flag = 1
+        else:
+            if note not in played_notes:  # end
+                flag = 0
+                strokes.append((start, idx - start))
+    else:
+        if flag == 1:
+            strokes.append((start, idx - start))
+    print(note, strokes)
+    return strokes
+
+
+def _frames_to_qnotes(frames, fpq):
+    qnotes = frames / fpq
+    return round(qnotes, 2)
 
 
 def _sci_note_to_midi_pitch(note):
@@ -189,7 +212,9 @@ def main():
                    # "yellow": (251, 246, 56),
                    }
     start_time = 2.5
-    stop_time = 90
+    stop_time = 91
+
+    bpm = 85
 
     im_notes = Image.open("notes_3.PNG")
     im_keys = Image.open("keys.PNG")
@@ -200,6 +225,7 @@ def main():
 
     video = cv2.VideoCapture('vid.mp4')
     fps = video.get(cv2.CAP_PROP_FPS)
+    frames_per_qnote = 60 * (fps/bpm)
     currentframe = 0
     while True:
         ret, frame = video.read()
@@ -240,7 +266,7 @@ def main():
             continue
         print(channels[col])
 
-    write_to_midi(channels)
+    write_to_midi(channels, frames_per_qnote)
 
 
 if __name__ == '__main__':
