@@ -24,8 +24,8 @@ def init(key_image, key_image_row, starting_key, note_colors):
     note_names = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"]
     colors_notes = note_colors
     colors_all.update(colors_notes)
-    colors_keys = colors_keys = {"white": (255, 255, 255),
-                                 "black": (0, 0, 0)}
+    colors_keys = colors_keys = {"white": (144, 144, 144),
+                                 "black": (15, 15, 15)}
     colors_all.update(colors_keys)
 
     keys = detect_keys(_get_pixel_row(key_image, key_image_row), starting_key)
@@ -115,7 +115,8 @@ def _remove_spaces(kb):
     lengths = []
     for key in kb:
         lengths.append(key[1] - key[0])
-    min_black_key_length = np.histogram(np.array(lengths), 2)[0][0]
+    min_black_key_length = int(np.median(np.array(lengths)) / 2)
+
     for key in kb:
         if key[1] - key[0] < min_black_key_length:
             kb.remove(key)
@@ -204,17 +205,17 @@ def _sci_note_to_midi_pitch(note):
 
 def main():
     starting_key = ("a", 0)
-    note_colors = {"black": (0, 0, 0),
-                   "blue": (2, 17, 255),
-                   "green": (73, 246, 42),
+    note_colors = {"black": (17, 14, 15),
+                   "red": (230, 13, 17),
+                   # "green": (73, 246, 42),
                    # "purple": (138, 69, 255),
                    # "red": (252, 72, 23),
                    # "yellow": (251, 246, 56),
                    }
-    start_time = 2.5
-    stop_time = 91
+    start_time = 3
+    stop_time = 355
 
-    bpm = 85
+    bpm = 120
 
     im_notes = Image.open("notes_3.PNG")
     im_keys = Image.open("keys.PNG")
@@ -241,9 +242,9 @@ def main():
 
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         image = Image.fromarray(frame)
-        im_notes_pix = _get_pixel_row(image, 615)
+        im_notes_pix = _get_pixel_row(image, 630)
         if currentframe == start_time * fps:
-            init(image, 615, starting_key, note_colors)
+            init(image, 630, starting_key, note_colors)
 
         played_notes.append(detect_notes(im_notes_pix, True))
 
