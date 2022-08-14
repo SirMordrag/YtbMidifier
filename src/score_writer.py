@@ -2,7 +2,7 @@
     Convert frame-by-frame notes to MusicXML
 """
 
-from midiutil.MidiFile import MIDIFile
+from pymusicxml import *
 
 
 class ScoreWriter:
@@ -14,6 +14,7 @@ class ScoreWriter:
         self.keys = {}
 
         self.note_names = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"]
+        self.note_names_with_pich = [(note + str(pitch)) for pitch in range(0, 9) for note in self.note_names]
         self.starting_key = syn_config["starting_key"]
         self.colors_notes = syn_config["note_colors"]
         self.colors_all.update(self.colors_notes)
@@ -21,23 +22,51 @@ class ScoreWriter:
         self.colors_all.update(self.colors_keys)
 
     def process(self, played_notes):
+        nbfd = self._notes_by_frame_to_note_frame_durations(played_notes)
+
+
+
+
+    def _notes_by_frame_to_note_frame_durations(self, notes_by_frame):
+        # split into channels
+        channel_names = notes_by_frame[0].keys()
+
         channels = {}
-        for col in self.colors_notes.keys():
-            if col == "black":
-                continue
-            channels[col] = []
-            for row in played_notes:
-                channels[col].append(row[col])
+        for name in channel_names:
+            channels[name] = list()
 
-        for col in self.colors_notes:
-            if col == "black":
-                continue
-            # print(channels[col])
+        for fr in notes_by_frame:  # fr ... dict
+            for k in fr.keys():
+                channels[k].append(fr[k])
+        # <channels> now contains keys for every channel, which contain list of frames, each a list of notes
 
-        self.write_to_midi(channels, self.frames_per_qnote)
+        # convert to note frame durations
+        # <note_frame_durations>: dictionary by channel, each list of tuples (note, start, duration in frames)
+        note_frame_durations = {}
+        for ch in channels.keys():
+            note_frame_durations[ch] = list()
+
+            for note in self.note_names_with_pich:
+                start_fr = None
+                for i, fr in enumerate(channels[ch]):
+                    if start_fr is None and note in fr:
+                        start_fr = i
+                    elif start_fr is not None and note in fr:
+                        continue
+                    elif start_fr is not None and note not in fr:
+                        note_frame_durations[ch].append((note, start_fr, i - start_fr))
+                        start_fr = None
+
+        # sort
+        for k in note_frame_durations.keys():
+            note_frame_durations[k].sort(key=lambda y: y[1])
+        print(note_frame_durations)
+        return note_frame_durations
+
+
 
     def write_to_midi(self, channels, fpq):
-        mf = MIDIFile(len(channels))
+        mf = None
 
         track = 0
         for key in channels.keys():
