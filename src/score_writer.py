@@ -37,7 +37,7 @@ class ScoreWriter:
         self.write_to_midi(channels, self.frames_per_qnote)
 
     def write_to_midi(self, channels, fpq):
-        mf = MIDIFile(len(channels))
+        mf = MIDIFile(len(channels), eventtime_is_ticks=True)
 
         track = 0
         for key in channels.keys():
@@ -45,7 +45,7 @@ class ScoreWriter:
             for note in self.keys.keys():
                 note_strokes = self._get_note_strokes(note, channels[key])
                 for stroke in note_strokes:
-                    start, dur = self._frames_to_qnotes(stroke[0], fpq), self._frames_to_qnotes(stroke[1], fpq)
+                    start, dur = stroke[0] * 1000, stroke[1] * 1000
                     if dur > 0:
                         mf.addNote(track, 0, self._sci_note_to_midi_pitch(note), start, dur, 100)
 

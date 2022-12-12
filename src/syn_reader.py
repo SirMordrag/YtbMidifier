@@ -21,6 +21,8 @@ class SynReader:
         self.colors_all.update(self.colors_keys)
 
         self.notes_by_frame = []
+        # <note_frame_durations>: dictionary by channel, each list of tuples (note, start, duration in frames)
+        self.note_frame_durations = {}
 
     def _color_distance(self, col1, col2):
         return np.sqrt((col1[0] - col2[0]) ** 2 + (col1[1] - col2[1]) ** 2 + (col1[2] - col2[2]) ** 2)
@@ -115,3 +117,38 @@ class SynReader:
             colored_pixels.append(list(colors.keys())[np.array(dist_vector).argmin()])
         # to_image(colored_pixels, self.colors_all)
         return colored_pixels
+
+    def notes_by_frame_to_note_frame_durations(self):
+        note_names_with_pich = [(note + str(pitch)) for pitch in range(0, 9) for note in self.note_names]
+        # split into channels
+        channel_names = self.notes_by_frame[0].keys()
+
+        channels = {}
+        for name in channel_names:
+            channels[name] = list()
+
+        for fr in self.notes_by_frame:  # fr ... dict
+            for k in fr.keys():
+                channels[k].append(fr[k])
+        # <channels> now contains keys for every channel, which contain list of frames, each a list of notes
+
+        # convert to note frame durations
+        for ch in channels.keys():
+            self.note_frame_durations[ch] = list()
+
+            for note in note_names_with_pich:
+                start_fr = None
+                for i, fr in enumerate(channels[ch]):
+                    if start_fr is None and note in fr:
+                        start_fr = i
+                    elif start_fr is not None and note in fr:
+                        continue
+                    elif start_fr is not None and note not in fr:
+                        self.note_frame_durations[ch].append((note, start_fr, i - start_fr))
+                        start_fr = None
+
+        # sort
+        for k in self.note_frame_durations.keys():
+            self.note_frame_durations[k].sort(key=lambda y: y[1])
+        print(self.note_frame_durations)
+

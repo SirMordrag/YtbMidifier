@@ -3,6 +3,7 @@
 """
 
 import cv2
+import json
 from src.syn_reader import SynReader
 
 
@@ -62,6 +63,12 @@ class SynProcessor(SynReader):
             if index % self.fps == 0:
                 print(f"Processed {int(index / self.fps)} seconds")
 
+        self.notes_by_frame_to_note_frame_durations()
+
     def release(self):
         self.video.release()
         cv2.destroyAllWindows()
+
+    def save_output(self, filename="output"):
+        with open(filename + ".txt", "w") as out:
+            out.write(json.dumps(self.note_frame_durations))
