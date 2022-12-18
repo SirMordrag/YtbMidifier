@@ -26,15 +26,16 @@ class SynVideo:
     def release(self):
         self.video.release()
     
-    def init_reading(self, row, start_time=0, stop_time=None, fps=None):
+    def init_reading(self, row, start_time=0, stop_time=None, fps=None, **kwargs):
         if fps:
             self.fps = fps
         self.row = row
-        self.start_frame = int(start_time * self.fps)
+        self.start_frame = int(self._convert_time(start_time) * self.fps)
         if self.start_frame > 0:
             self.video.set(cv2.CAP_PROP_POS_FRAMES, self.start_frame - 1)
         if stop_time:
-            self.stop_frame = int(stop_time * self.fps)
+            self.stop_frame = min(int(self._convert_time(stop_time) * self.fps),
+                                  self.video.get(cv2.CAP_PROP_FRAME_COUNT))
         else:
             self.stop_frame = self.video.get(cv2.CAP_PROP_FRAME_COUNT)
 
@@ -51,8 +52,11 @@ class SynVideo:
             self._info()
             self.release()
             raise ValueError("Reading finished, no more frames to read!")
-        
-        return self.frame[self.row]
+
+        frame = cv2.cvtColor(self.frame, cv2.COLOR_BGR2RGB)
+        row = frame[self.row]
+        self._read_frame()
+        return row
 
     def _read_frame(self):
         ret, self.frame = self.video.read()
@@ -62,12 +66,23 @@ class SynVideo:
             self.is_finished = True
             self.frame = None
             self.release()
-            print("Finished")
+            print("SynVideo: Reading finished")
             self._info()
         elif not ret:
             self._info()
             self.release()
             raise ValueError("Error while reading frame")
+
+    @staticmethod
+    def _convert_time(time):
+        if isinstance(time, str):
+            return int(time.split(":")[0]) * 60 + int(time.split(":")[1])
+        elif isinstance(time, tuple):
+            return time[0] * 60 + time[1]
+        elif isinstance(time, int):
+            return time
+        else:
+            raise TypeError(f"Wrong time format: {time}. Supported formats are 'min:sec', (min, sec), sec.")
 
     def _info(self, do_print=True):
         out = "SynVideo runtime info:\r\n"
